@@ -18,6 +18,7 @@
 - 把 `sidebar.footer.action` 的内容改为上下排列(`display: contents` → `flex column`),修复多个 footer 插件挤在一行的问题。
 - 可配置条目**上下顺序**:在 `cordis.patch.yml` 的插件行 `config.order` 里按从上到下写出插件 id 列表,或直接在 设置 → 插件 → Sidebar Footer Order 卡片里用 ↑/↓ 调整。
 - 可配置 `layout`(column / row / contents)、`gap`(条目间距)、`align`(对齐方式)。
+- 兼容**不渲染任何内容的条目**(如 shell 内置的 `cordis-panel`,平时返回 null):排序自动跳过这类条目,不会因「条目数 ≠ DOM 节点数」而失效。
 - 配置热加载 —— 编辑 `cordis.patch.yml` 或使用设置卡片保存,均无需重启 `dsh web` 即可生效(保存后客户端约 10 秒内自动同步,卡片内保存则立即生效)。
 - 不注册任何可见的 footer 条目,只做布局与排序,卸载后不留痕迹(样式与观察器随插件卸载清理)。
 
@@ -28,7 +29,7 @@
 | Host | `lib/index.js` | 注册 `/footer-order/settings`(GET 读取生效配置;POST 将设置保存/重置回 profile 的 `cordis.patch.yml` 中本插件所在行,启动时若该行不存在则写入默认配置) |
 | Client | `lib/client.js` | 注入覆盖样式(锚点改为纵向 flex);监听 DOM 变化,按配置把锚点的子元素重新排序;在 设置 → 插件 注册可编辑的 Sidebar Footer Order 卡片 |
 
-排序实现:每个注册条目在锚点下渲染为**恰好一个子节点**(渲染器按 `order` 升序输出),客户端把子节点与 `ctx.slots.entriesOfSlot('sidebar.footer.action')` 里的条目 id 逐一配对(增量学习,带未知节点保护),再按配置顺序重排。若某个条目渲染为空(例如侧边栏收起时某些插件返回 null),当轮跳过排序以免错配,展开后自动恢复。
+排序实现:每个注册条目在锚点下渲染为**恰好一个子节点**(渲染器按 `order` 升序输出),但部分条目可能渲染为空(如 `cordis-panel`、收起侧边栏时隐藏的读数)。客户端用三层策略把子节点与 `ctx.slots.entriesOfSlot('sidebar.footer.action')` 里的条目 id 配对:① 按条目 `label` 的文本匹配子节点(如「重启 DSH」按钮);② 沿用此前已确认的配对;③ 对剩余子节点做「配置命中优先、位移最小」的子序列枚举。之后按配置顺序重排 DOM。这样即使存在常驻的空渲染条目,排序也始终生效。
 
 ## 配置
 

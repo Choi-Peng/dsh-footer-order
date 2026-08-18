@@ -18,6 +18,7 @@ This plugin injects an `!important` stylesheet rule that turns the anchor into a
 - Stacks `sidebar.footer.action` content vertically (`display: contents` → flex column), fixing the squeezed row.
 - Configurable **top-to-bottom order**: write the plugin-id list in the plugin row's `config.order` in `cordis.patch.yml`, or reorder with ↑/↓ in the Settings → Plugins → Sidebar Footer Order card.
 - Configurable `layout` (column / row / contents), `gap` (px between entries), and `align` (cross-axis alignment).
+- Tolerates **entries that render nothing** (e.g. the shell's dormant `cordis-panel`, which returns null unless a dynamic plugin run needs attention): those entries are skipped by the ordering instead of blocking it when "registered ids ≠ DOM nodes".
 - Live config reload — editing `cordis.patch.yml` or saving from the card takes effect without restarting `dsh web` (the client re-syncs within ~10 s; saves from the card apply instantly).
 - Registers no visible footer entry itself — it only does layout + ordering, and cleans up its style sheet and observers on unload.
 
@@ -28,7 +29,7 @@ This plugin injects an `!important` stylesheet rule that turns the anchor into a
 | Host | `lib/index.js` | Serves `/footer-order/settings` (GET effective config; POST saves/resets settings back to this plugin's row in the profile's `cordis.patch.yml`; seeds a default row on startup if absent) |
 | Client | `lib/client.js` | Injects the override stylesheet (anchor → vertical flex); watches the DOM and reorders the anchor's children per config; registers the editable Sidebar Footer Order card in Settings → Plugins |
 
-Ordering: every registered entry renders as **exactly one child** of the anchor (the renderer outputs entries sorted by `order`), so the client pairs each child with the entry id from `ctx.slots.entriesOfSlot('sidebar.footer.action')` (incrementally, with unknown-node protection) and re-sorts the children to the configured sequence. If an entry renders nothing (e.g. some plugins return null when the sidebar is collapsed into the rail), the pass is skipped that round to avoid mispairing and resumes when the entries render again.
+Ordering: every registered entry renders as **exactly one child** of the anchor (the renderer outputs entries sorted by `order`), but some entries may render nothing (e.g. `cordis-panel`, or readouts hidden in the collapsed rail). The client pairs each child with the entry id from `ctx.slots.entriesOfSlot('sidebar.footer.action')` through three layers: ① label text — a child whose text contains an entry's `label` (e.g. the "重启 DSH" button) is that entry; ② previously confirmed pairings; ③ a subsequence heuristic over the remaining children (config-order match first, then minimal rank shift). It then re-sorts the children to the configured sequence — so ordering keeps working even while a dormant null-rendering entry stays registered.
 
 ## Configuration
 
