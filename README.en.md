@@ -2,6 +2,22 @@
 
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) web plugin that fixes the sidebar footer (`sidebar.footer.action` slot) squeezing multiple plugin entries into one row, and lets you configure their top-to-bottom order.
 
+<table align="center">
+  <thead>
+    <tr><th>Before</th><th>After</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td align="center"><img src="docs/imgs/before.png" alt="Before" width="360"></td>
+      <td align="center"><img src="docs/imgs/after.png" alt="After" width="360"></td>
+    </tr>
+    <tr>
+      <td align="center"><sub>Multiple footer plugins squeezed into one row</sub></td>
+      <td align="center"><sub>Stacked vertically, clean and readable</sub></td>
+    </tr>
+  </tbody>
+</table>
+
 ![platform-web](https://img.shields.io/badge/platform-web-blue)
 
 > [!NOTE]

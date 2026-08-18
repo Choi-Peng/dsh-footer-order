@@ -1,6 +1,6 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DSH web sidebar footer action ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column) and let users configure the top-to-bottom order of the entries.",
   "license": "MIT",
   "keywords": [
