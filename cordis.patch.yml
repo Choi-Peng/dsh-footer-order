@@ -1,0 +1,15 @@
+# dsh-footer-order — default config (bundle patch layer)
+
+- id: footer-order
+  name: '@choi-p/dsh-footer-order'
+  config:
+    # column = vertical stack (default), row = horizontal, contents = leave untouched
+    layout: column
+    # px gap between stacked footer entries (>= 0)
+    gap: 0
+    # cross-axis alignment inside the stack: stretch | start | center | end
+    align: stretch
+    # ordered list of sidebar.footer.action entry ids, top to bottom.
+    # Entries not listed keep their default registration order and are placed
+    # below the listed ones.
+    order: []

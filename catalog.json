@@ -1,0 +1,10 @@
+{
+  "repos": [
+    {
+      "name": "dsh-footer-order",
+      "url": "https://github.com/Choi-Peng/dsh-footer-order",
+      "description": "Sidebar footer action layout & ordering: stack sidebar.footer.action entries vertically (display: contents → flex column) and configure their top-to-bottom order.",
+      "bundle": false
+    }
+  ]
+}
