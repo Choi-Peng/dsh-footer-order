@@ -1,18 +1,28 @@
-// Host-half integration test for dsh-footer-order.
-// Mocks ctx/webServer and a temp profile dir, then exercises:
-//   1. default row seeding on startup,
-//   2. GET effective settings,
-//   3. POST partial update (layout/gap/align/order) preserving other rows/comments,
-//   4. POST reset,
-//   5. splice round-trip stability.
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+// Host-half integration test for dsh-footer-order (v0.2.0 settings-seam model).
+// Boots a REAL cordis Context with the REAL @deepseek-ai/dsh-settings provider
+// (in-memory storage), mounts the plugin, and exercises the thin proxy:
+//   1. GET  → resolved value (defaults → base → user) + revision + hasOverrides,
+//   2. POST → save merges into the settings user layer (revision bumps),
+//   3. stale expectedRevision → 409 conflict carrying the latest revision,
+//   4. schema-invalid fields → 400 invalid-field,
+//   5. POST reset → replace({}) falls back to the base (patch config),
+//   6. no settings service → GET/POST 503 while the layout feature is untouched.
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import * as yaml from 'js-yaml';
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include';
+import { createRequire } from 'node:module';
+import { SettingsProvider } from '@deepseek-ai/dsh-settings';
 import * as plugin from '../lib/index.js';
 
-const PATCH_FILENAME = 'cordis.patch.yml';
+// @deepseek-ai/cordis is a peer of dsh-settings, not a direct dependency of
+// this plugin; resolve it from the installed dsh-settings location.
+const require = createRequire(import.meta.url);
+const cordisPath = require.resolve('@deepseek-ai/cordis', {
+  paths: [require.resolve('@deepseek-ai/dsh-settings')],
+});
+const { Context } = await import(cordisPath);
+
+const NS = 'footer-order';
 let failures = 0;
 
 function assert(cond, msg) {
@@ -24,76 +34,57 @@ function assert(cond, msg) {
   }
 }
 
-function setupProfile() {
-  const dir = mkdtempSync(join(tmpdir(), 'dfo-test-'));
-  const patch = join(dir, PATCH_FILENAME);
-  // Pre-existing profile with a comment, another plugin row, and a disabled row.
-  writeFileSync(
-    patch,
-    [
-      '# my comment line',
-      '',
-      '- id: balance',
-      '  disabled: true',
-      '- insert:',
-      '    - id: deepseek-balance',
-      "      name: '@choi-p/dsh-deepseek-balance'",
-      '      config:',
-      '        displayCurrency: cny',
-      '        warningThresholdUsd: 0',
-      '',
-    ].join('\n'),
-    'utf8',
-  );
-  return { dir, patch };
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Settings provider backed by an in-memory document (the "settings.yaml"). */
+class MemoryProvider extends SettingsProvider {
+  constructor(ctx) {
+    super(ctx);
+    this.doc = {};
+  }
+  async load() {
+    return this.doc;
+  }
+  async persist(ns, section) {
+    this.doc[ns] = section;
+  }
+  get writable() {
+    return true;
+  }
 }
 
-function makeCtx(dir) {
+function makeServer() {
   const routes = [];
-  const watchers = new Set();
-  const ctx = {
-    baseUrl: `file://${dir}`,
-    fiber: { entry: { options: { id: 'footer-order', name: '@choi-p/dsh-footer-order' } } },
-    webServer: {
-      register: (route) => {
-        routes.push(route);
-        return () => {};
-      },
-    },
-    effect: (fn) => {
-      fn();
+  return {
+    routes,
+    register: (route) => {
+      routes.push(route);
       return () => {};
-    },
-    // cordis service injection: settings always "available" in the host test,
-    // so invoke the callback immediately with this ctx as the scope.
-    inject: (_deps, callback) => {
-      callback(ctx);
-      return () => {};
-    },
-    settings: {
-      // Minimal stand-in for dsh-settings' Settings.register: resolve the
-      // composition `base` through the schemastery schema (callable) and
-      // expose get/watch so installSettingsSection's wiring runs.
-      register: (ns, schema, options) => {
-        let resolved;
-        try {
-          resolved = Object.freeze(schema(options?.base ?? {}));
-        } catch {
-          resolved = Object.freeze(options?.base ?? {});
-        }
-        return {
-          get: () => resolved,
-          watch: (cb) => {
-            watchers.add(cb);
-            return () => watchers.delete(cb);
-          },
-          update: async () => {},
-          replace: async () => {},
-        };
-      },
     },
   };
-  return { ctx, routes };
+}
+
+/** Mount the plugin on a fresh real-cordis Context. */
+async function mount(config, { withSettings = true } = {}) {
+  const ctx = new Context();
+  const server = makeServer();
+  ctx.provide('webServer', server);
+  if (withSettings) await ctx.plugin(MemoryProvider);
+  await ctx.plugin(plugin, config);
+  // Let the nested `ctx.inject(['settings'])` fiber settle.
+  await sleep(30);
+  return { ctx, server };
+}
+
+/** GET until the route answers 200 (scope mounted) or the budget runs out. */
+async function waitReady(route) {
+  for (let i = 0; i < 40; i += 1) {
+    const res = makeRes();
+    await route.handler(makeReq('GET'), res);
+    if (res._status === 200) return true;
+    await sleep(25);
+  }
+  return false;
 }
 
 function makeRes() {
@@ -118,7 +109,6 @@ function makeReq(method, body) {
     headers: { 'Content-Type': 'application/json', origin: 'http://127.0.0.1:3080' },
     on(ev, cb) {
       if (ev === 'data' && body !== undefined) {
-        // synchronous body delivery for the test
         cb(Buffer.from(JSON.stringify(body)));
       } else if (ev === 'end') {
         cb();
@@ -130,103 +120,92 @@ function makeReq(method, body) {
   return req;
 }
 
-function readPatchRows(patchFile) {
-  return yaml.load(readFileSync(patchFile, 'utf8'), { schema: entryListSchema });
-}
-
-function rowOf(data, id) {
-  for (const p of data) {
-    const cands = Array.isArray(p.insert) ? p.insert : [p];
-    for (const e of cands) {
-      if (e && e.id === id) return e;
-    }
-  }
-  return null;
+async function call(route, method, body) {
+  const res = makeRes();
+  await route.handler(makeReq(method, body), res);
+  return { status: res._status, body: JSON.parse(res._body) };
 }
 
 async function main() {
-  // ── 1. startup seeding ─────────────────────────────────────────────────────
-  console.log('1) startup seeding');
-  let { dir, patch } = setupProfile();
-  let { ctx, routes } = makeCtx(dir);
-  plugin.apply(ctx, undefined);
-  assert(routes.length === 1, 'one route registered');
-  assert(routes[0].path === '/footer-order/settings', 'route path is /footer-order/settings');
-  let data = readPatchRows(patch);
-  const row = rowOf(data, 'footer-order');
-  assert(!!row, 'default row seeded on startup');
-  assert(row.name === '@choi-p/dsh-footer-order', 'row name set');
-  assert(row.config.layout === 'column' && row.config.gap === 0 && row.config.align === 'stretch' && Array.isArray(row.config.order) && row.config.order.length === 0, 'default config values');
-  const patchText = readFileSync(patch, 'utf8');
-  assert(patchText.includes('# my comment line'), 'existing comment preserved after seeding');
-  assert(patchText.includes('deepseek-balance'), 'existing plugin row preserved after seeding');
-  const before = patchText;
+  // A temp dir to prove the plugin never writes to the profile patch layer.
+  const dir = mkdtempSync(join(tmpdir(), 'dfo-v02-'));
 
-  // ── 2. GET effective settings ──────────────────────────────────────────────
+  // ── 1. mount with the settings service; base = patch config ───────────────
+  console.log('1) mount with settings service');
+  const baseConfig = { layout: 'row', gap: 2 }; // the cordis.patch.yml row config
+  const { ctx, server } = await mount(baseConfig);
+  assert(server.routes.length === 1, 'one route registered');
+  assert(server.routes[0].path === '/footer-order/settings', 'route path is /footer-order/settings');
+  const route = server.routes[0];
+  assert(await waitReady(route), 'settings scope mounted (GET answers 200)');
+
+  // ── 2. GET effective settings ─────────────────────────────────────────────
   console.log('2) GET effective settings');
-  const route = routes[0];
-  let res = makeRes();
-  await route.handler(makeReq('GET'), res);
-  let body = JSON.parse(res._body);
-  assert(res._status === 200, 'GET returns 200');
-  assert(body.layout === 'column' && body.gap === 0 && body.align === 'stretch', 'GET returns defaults');
-  assert(Array.isArray(body.order), 'GET order is an array');
-  assert(body.hasOverrides === true, 'GET reports hasOverrides after seeding');
+  let r = await call(route, 'GET');
+  assert(r.status === 200, 'GET returns 200');
+  assert(r.body.layout === 'row' && r.body.gap === 2 && r.body.align === 'stretch', 'GET resolves base layer (patch config)');
+  assert(JSON.stringify(r.body.order) === '[]', 'GET order defaults to []');
+  assert(r.body.revision === 0, 'GET revision starts at 0');
+  assert(r.body.hasOverrides === false, 'GET hasOverrides false with no user layer');
 
-  // ── 3. POST partial update with order list ─────────────────────────────────
-  console.log('3) POST update (layout=row, gap=6, order list)');
-  res = makeRes();
-  await route.handler(makeReq('POST', { layout: 'row', gap: 6, order: ['deepseek-balance', 'other-plugin'] }), res);
-  body = JSON.parse(res._body);
-  assert(res._status === 200, 'POST returns 200');
-  assert(body.layout === 'row' && body.gap === 6, 'POST applies layout/gap');
-  assert(JSON.stringify(body.order) === JSON.stringify(['deepseek-balance', 'other-plugin']), 'POST applies order list');
-  assert(body.align === 'stretch', 'unset fields keep current value');
-  const afterUpdate = readFileSync(patch, 'utf8');
-  assert(afterUpdate.includes('# my comment line'), 'comment survives splice update');
-  assert(afterUpdate.includes('displayCurrency: cny'), 'sibling row config survives splice update');
-  data = readPatchRows(patch);
-  assert(JSON.stringify(rowOf(data, 'footer-order').config.order) === JSON.stringify(['deepseek-balance', 'other-plugin']), 'patch row order persisted');
-  const beforeRowText = before.slice(before.indexOf('id: footer-order'));
-  const afterRowText = afterUpdate.slice(afterUpdate.indexOf('id: footer-order'));
-  assert(beforeRowText !== afterRowText, 'row text changed');
-  assert(afterUpdate.split('footer-order').length >= 2, 'row still present exactly once');
-  assert(afterUpdate.indexOf('displayCurrency: cny') === before.indexOf('displayCurrency: cny'), 'sibling bytes untouched (splice, not dump)');
+  // ── 3. POST save → user layer, revision bump, patch layer untouched ───────
+  console.log('3) POST save');
+  r = await call(route, 'POST', { layout: 'column', gap: 6, align: 'center', order: ['a', 'b'], expectedRevision: 0 });
+  assert(r.status === 200, 'POST save returns 200');
+  assert(r.body.layout === 'column' && r.body.gap === 6 && r.body.align === 'center', 'save applies layout/gap/align');
+  assert(JSON.stringify(r.body.order) === '["a","b"]', 'save applies order');
+  assert(r.body.revision === 1, 'revision bumped to 1');
+  assert(r.body.hasOverrides === true, 'hasOverrides true after save');
+  const desc = ctx.settings.describe({ redactSecrets: true }).find((d) => d.ns === NS);
+  assert(
+    desc && JSON.stringify(desc.user) === JSON.stringify({ layout: 'column', gap: 6, align: 'center', order: ['a', 'b'] }),
+    'change persisted into the settings user layer (not the patch file)',
+  );
+  assert(
+    desc && desc.base && desc.base.layout === 'row' && desc.base.gap === 2,
+    'base layer still carries the original patch config',
+  );
 
-  // ── 4. POST reset ──────────────────────────────────────────────────────────
-  console.log('4) POST reset');
-  res = makeRes();
-  await route.handler(makeReq('POST', { reset: true }), res);
-  body = JSON.parse(res._body);
-  assert(res._status === 200, 'reset returns 200');
-  assert(body.layout === 'column' && body.gap === 0 && body.align === 'stretch', 'reset restores defaults');
-  assert(JSON.stringify(body.order) === '[]', 'reset clears order');
-  data = readPatchRows(patch);
-  const rowAfterReset = rowOf(data, 'footer-order');
-  assert(rowAfterReset && rowAfterReset.config === undefined, 'reset removes the row config block');
-  assert(readFileSync(patch, 'utf8').includes('displayCurrency: cny'), 'sibling config intact after reset');
+  // ── 4. stale revision → 409 ───────────────────────────────────────────────
+  console.log('4) concurrent write (stale revision)');
+  r = await call(route, 'POST', { gap: 9, expectedRevision: 0 });
+  assert(r.status === 409, 'stale expectedRevision returns 409');
+  assert(r.body.error === 'conflict', '409 body marks conflict');
+  assert(r.body.revision === 1, '409 carries the latest revision');
+  // A fresh revision goes through.
+  r = await call(route, 'POST', { gap: 9, expectedRevision: 1 });
+  assert(r.status === 200 && r.body.gap === 9 && r.body.revision === 2, 'fresh revision accepted');
 
-  // ── 5. invalid values rejected ─────────────────────────────────────────────
+  // ── 5. schema-invalid fields → 400 ────────────────────────────────────────
   console.log('5) validation');
-  res = makeRes();
-  await route.handler(makeReq('POST', { layout: 'diagonal' }), res);
-  body = JSON.parse(res._body);
-  assert(res._status === 400 && body.error === 'invalid-field' && body.fields.indexOf('layout') !== -1, 'invalid layout rejected');
-  res = makeRes();
-  await route.handler(makeReq('POST', { gap: -3 }), res);
-  body = JSON.parse(res._body);
-  assert(res._status === 400 && body.fields.indexOf('gap') !== -1, 'negative gap rejected');
-  res = makeRes();
-  await route.handler(makeReq('POST', { order: [1, 'a', 'a', ''] }), res);
-  body = JSON.parse(res._body);
-  assert(res._status === 200 && JSON.stringify(body.order) === '["a"]', 'order sanitized (strings only, deduped, empties dropped)');
+  r = await call(route, 'POST', { layout: 'diagonal', expectedRevision: 2 });
+  assert(r.status === 400 && r.body.error === 'invalid-field' && r.body.fields.indexOf('layout') !== -1, 'invalid layout rejected');
+  r = await call(route, 'POST', { gap: -3, expectedRevision: 2 });
+  assert(r.status === 400 && r.body.fields.indexOf('gap') !== -1, 'negative gap rejected');
+  r = await call(route, 'POST', { order: [1, 'a', 'a', ''], expectedRevision: 2 });
+  assert(r.status === 400 && r.body.fields.indexOf('order') !== -1, 'non-string order entry rejected');
 
-  // ── 6. idempotent no-op ────────────────────────────────────────────────────
-  console.log('6) idempotent no-op');
-  const textAfter5 = readFileSync(patch, 'utf8');
-  res = makeRes();
-  await route.handler(makeReq('POST', { order: ['a'] }), res);
-  assert(readFileSync(patch, 'utf8') === textAfter5, 'no rewrite when config unchanged');
+  // ── 6. POST reset → falls back to base ────────────────────────────────────
+  console.log('6) POST reset');
+  r = await call(route, 'POST', { reset: true, expectedRevision: 2 });
+  assert(r.status === 200, 'reset returns 200');
+  assert(r.body.layout === 'row' && r.body.gap === 2, 'reset falls back to the base (patch config)');
+  assert(JSON.stringify(r.body.order) === '[]' && r.body.align === 'stretch', 'reset re-inherits defaults');
+  assert(r.body.hasOverrides === false, 'reset clears overrides');
+  assert(r.body.revision === 3, 'reset bumps revision');
+  r = await call(route, 'GET');
+  assert(r.body.hasOverrides === false && r.body.layout === 'row', 'GET after reset still base');
+  assert(ctx.settings.describe({ redactSecrets: true }).find((d) => d.ns === NS).user !== undefined, 'user layer exists (empty) after reset');
+
+  // ── 7. no settings service → 503, layout unaffected ───────────────────────
+  console.log('7) no settings service');
+  const { server: server2 } = await mount(undefined, { withSettings: false });
+  const route2 = server2.routes[0];
+  assert(route2 !== undefined, 'route still registered without settings service');
+  r = await call(route2, 'GET');
+  assert(r.status === 503 && r.body.error === 'settings-unavailable', 'GET 503 without settings');
+  r = await call(route2, 'POST', { layout: 'column' });
+  assert(r.status === 503, 'POST 503 without settings');
 
   rmSync(dir, { recursive: true, force: true });
   console.log(failures === 0 ? '\nALL HOST TESTS PASSED' : `\n${failures} HOST TEST(S) FAILED`);

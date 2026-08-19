@@ -57,7 +57,15 @@ const entries = [
 ];
 
 // Current effective config the mocked /footer-order/settings returns.
-let currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['cordis-panel', 'restart-dsh', 'deepseek-balance'], hasOverrides: true };
+// Mirrors the v0.2.0 wire shape: resolved value + revision + hasOverrides.
+let currentConfig = {
+  layout: 'column',
+  gap: 0,
+  align: 'stretch',
+  order: ['cordis-panel', 'restart-dsh', 'deepseek-balance'],
+  revision: 3,
+  hasOverrides: true,
+};
 
 let observerCallback = null;
 const intervalCallbacks = [];
@@ -104,7 +112,9 @@ if (!capturedFactory) {
 }
 
 const requireStub = (name) => {
-  if (name === 'react') return { useState: () => [], useEffect: () => {}, createElement: () => ({}) };
+  if (name === 'react') {
+    return { useState: () => [], useEffect: () => {}, useRef: () => ({ current: null }), createElement: () => ({}) };
+  }
   throw new Error('unexpected require: ' + name);
 };
 
@@ -173,10 +183,10 @@ async function main() {
 
   // 3) The previously-failing live config: [restart-dsh, deepseek-balance].
   console.log('3) flip config [restart-dsh, deepseek-balance]');
-  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['restart-dsh', 'deepseek-balance'], hasOverrides: true };
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['restart-dsh', 'deepseek-balance'], hasOverrides: true, revision: 4 };  // revision: config edits bump it
   await firePoll();
   assert(JSON.stringify(ids()) === '["restart-dsh","deepseek-balance"]', 'restart stays on top (already correct)');
-  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['deepseek-balance', 'restart-dsh'], hasOverrides: true };
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['deepseek-balance', 'restart-dsh'], hasOverrides: true, revision: 4 };  // revision: config edits bump it
   await firePoll();
   assert(JSON.stringify(ids()) === '["deepseek-balance","restart-dsh"]', 'flipped back: balance on top');
 
@@ -190,7 +200,7 @@ async function main() {
     e.datasetId = id;
     anchor.appendChild(e);
   }
-  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['c', 'a'], hasOverrides: true };
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['c', 'a'], hasOverrides: true, revision: 4 };  // revision: config edits bump it
   await firePoll(); // sync state.config, then reconcile
   assert(JSON.stringify(ids()) === '["c","a"]', 'config [c,a] reorders null-free pair correctly');
 
@@ -217,10 +227,10 @@ async function main() {
 
   // 7) layout variants.
   console.log('7) layout variants');
-  currentConfig = { layout: 'row', gap: 0, align: 'stretch', order: [], hasOverrides: true };
+  currentConfig = { layout: 'row', gap: 0, align: 'stretch', order: [], hasOverrides: true, revision: 4 };  // revision: config edits bump it
   await firePoll();
   assert(styleText().includes('flex-direction:row !important'), 'row layout CSS');
-  currentConfig = { layout: 'contents', gap: 0, align: 'stretch', order: [], hasOverrides: true };
+  currentConfig = { layout: 'contents', gap: 0, align: 'stretch', order: [], hasOverrides: true, revision: 4 };  // revision: config edits bump it
   await firePoll();
   assert(styleText().includes('display:contents !important'), 'contents layout CSS');
   assert(!styleText().includes('flex-direction'), 'no flex-direction when contents');
