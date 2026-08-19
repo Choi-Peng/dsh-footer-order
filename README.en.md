@@ -8,8 +8,8 @@ A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) web plugin
   </thead>
   <tbody>
     <tr>
-      <td align="center"><img src="docs/imgs/before.png" alt="Before" width="360"></td>
-      <td align="center"><img src="docs/imgs/after.png" alt="After" width="360"></td>
+      <td align="center"><img src="docs/imgs/before.png" alt="Before" width="240"></td>
+      <td align="center"><img src="docs/imgs/after.png" alt="After" width="240"></td>
     </tr>
     <tr>
       <td align="center"><sub>Multiple footer plugins squeezed into one row</sub></td>
@@ -35,21 +35,29 @@ This plugin injects an `!important` stylesheet rule that turns the anchor into a
 - Configurable **top-to-bottom order**: write the plugin-id list in the plugin row's `config.order` in `cordis.patch.yml`, or reorder with ↑/↓ in the Settings → Plugins → Sidebar Footer Order card.
 - Configurable `layout` (column / row / contents), `gap` (px between entries), and `align` (cross-axis alignment).
 - Tolerates **entries that render nothing** (e.g. the shell's dormant `cordis-panel`, which returns null unless a dynamic plugin run needs attention): those entries are skipped by the ordering instead of blocking it when "registered ids ≠ DOM nodes".
-- Live config reload — editing `cordis.patch.yml` or saving from the card takes effect without restarting `dsh web` (the client re-syncs within ~10 s; saves from the card apply instantly).
+- Live config reload — saving from the card (settings service hot-publishes) takes effect instantly without restarting `dsh web`; editing the bundle's `cordis.patch.yml` base config reloads the fiber via patch-layer HMR.
 - Registers no visible footer entry itself — it only does layout + ordering, and cleans up its style sheet and observers on unload.
 
 ## Architecture
 
 | Side | File | Role |
 | --- | --- | --- |
-| Host | `lib/index.js` | Serves `/footer-order/settings` (GET effective config; POST saves/resets settings back to this plugin's row in the profile's `cordis.patch.yml`; seeds a default row on startup if absent) |
+| Host | `lib/index.js` | Serves `/footer-order/settings` — a thin proxy over the `footer-order` settings namespace: GET returns the resolved config + revision + override flag; POST saves (update) or resets (replace `{}`) through the official dsh settings seam (`ctx.settings`). The deploy-time patch config becomes the namespace's `base` layer; runtime edits land in the `user` layer above it |
 | Client | `lib/client.js` | Injects the override stylesheet (anchor → vertical flex); watches the DOM and reorders the anchor's children per config; registers the editable Sidebar Footer Order card in Settings → Plugins |
 
-Ordering: every registered entry renders as **exactly one child** of the anchor (the renderer outputs entries sorted by `order`), but some entries may render nothing (e.g. `cordis-panel`, or readouts hidden in the collapsed rail). The client pairs each child with the entry id from `ctx.slots.entriesOfSlot('sidebar.footer.action')` through three layers: ① label text — a child whose text contains an entry's `label` (e.g. the "重启 DSH" button) is that entry; ② previously confirmed pairings; ③ a subsequence heuristic over the remaining children (config-order match first, then minimal rank shift). It then re-sorts the children to the configured sequence — so ordering keeps working even while a dormant null-rendering entry stays registered.
+Ordering: every registered entry renders as **exactly one child** of the anchor (the renderer outputs entries sorted by `order`), but some entries may render nothing (e.g. `cordis-panel`, or readouts hidden in the collapsed rail). The client pairs each child with the entry id from `ctx.slots.entriesOfSlot('sidebar.footer.action')` through three layers: ① label text — a child whose text contains an entry's `label` (e.g. the "Restart DSH" button) is that entry; ② previously confirmed pairings; ③ a subsequence heuristic over the remaining children (config-order match first, then minimal rank shift). It then re-sorts the children to the configured sequence — so ordering keeps working even while a dormant null-rendering entry stays registered.
 
 ## Configuration
 
-In the plugin row of the profile's `cordis.patch.yml`:
+The plugin follows dsh's official two-seam config model, and **all changes apply live without restarting `dsh web`** (requires the host to have `@deepseek-ai/dsh-settings` ≥ 0.1.0-rc.7, which is bundled in standard dsh web builds):
+
+| Layer | Source | How it takes effect |
+| --- | --- | --- |
+| Default | built into the schema | — |
+| base layer (deploy-time static config) | the plugin bundle's own `cordis.patch.yml` inline `config` (`dsh.bundle.patch`, auto-mounted on install) | `dsh web` watches the patch layer (HMR); editing it reloads this fiber with the new config |
+| user layer (runtime settings) | Settings → Plugins → Sidebar Footer Order save/reset, persisted via `ctx.settings` to `$DSH_HOME/settings.yaml`; reset = clear the user layer and fall back to base | settings service hot-publishes, instant; the plugin no longer rewrites `cordis.patch.yml` |
+
+The base-layer `config` (what the bundle ships):
 
 ```yaml
 - insert:
@@ -62,14 +70,9 @@ In the plugin row of the profile's `cordis.patch.yml`:
         order: []        # plugin-id list, top to bottom; unlisted entries keep default registration order below the listed ones
 ```
 
-`order` example — move `deepseek-balance` to the top:
-
-```yaml
-        order:
-          - deepseek-balance
-```
-
 > The ids in `order` are the `id` each plugin passes to `slots.register({ name, id, ... })` for `sidebar.footer.action` — not package names. The settings card lists all currently registered ids and lets you reorder them with ↑/↓.
+
+The card exposes `layout` (dropdown: vertical / horizontal / leave untouched), `gap`, `align`, and `order`, with **Save / Reset to defaults**. Save uses optimistic-concurrency revision — if the config was changed elsewhere, you get a prompt and the latest value is loaded.
 
 ## Installation
 
@@ -79,38 +82,24 @@ Settings → Plugins → Install, source `@choi-p/dsh-footer-order` or `github:C
 
 ### Manual
 
-1. Install the plugin into the web profile:
-
 ```bash
 dsh plugin --profile web add "github:Choi-Peng/dsh-footer-order"
 ```
 
-2. Make sure the plugin row is mounted in the profile patch layer (a default row is seeded automatically):
-
-```yaml
-# ~/.dsh/profiles/web/cordis.patch.yml
-- insert:
-    - id: footer-order
-      name: '@choi-p/dsh-footer-order'
-      config:
-        layout: column
-        gap: 0
-        align: stretch
-        order: []
-```
+The plugin package ships its own `cordis.patch.yml` (`dsh.bundle.patch` in `package.json`), which dsh mounts automatically on install. Restart `dsh web` to activate.
 
 ### Uninstall
 
-Remove the row from `cordis.patch.yml` (applies live), then:
-
 ```bash
-dsh plugin --profile web remove footer-order
+dsh plugin --profile web remove @choi-p/dsh-footer-order
 ```
+
+The bundle mount disappears with the plugin. If you had previously written the row manually in the profile layer, remove it first.
 
 ## Usage
 
 1. Open dsh web — the footer entries below the sidebar stack vertically.
-2. Settings → Plugins → **Sidebar Footer Order** card: adjust layout, gap, alignment, and order, then Save.
+2. Settings → Plugins → **Sidebar Footer Order** card: adjust layout, gap, alignment, and order, then Save. All changes apply live without restarting `dsh web`.
 
 ## Development
 
