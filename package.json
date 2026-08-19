@@ -21,8 +21,8 @@
     "js-yaml": "^4.2.0"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-settings": ">=1.0.0",
-    "@deepseek-ai/schemastery": ">=4.0.0"
+    "@deepseek-ai/dsh-settings": ">=0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1-rc.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-settings": { "optional": false },
