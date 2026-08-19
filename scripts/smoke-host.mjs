@@ -50,6 +50,7 @@ function setupProfile() {
 
 function makeCtx(dir) {
   const routes = [];
+  const watchers = new Set();
   const ctx = {
     baseUrl: `file://${dir}`,
     fiber: { entry: { options: { id: 'footer-order', name: '@choi-p/dsh-footer-order' } } },
@@ -62,6 +63,34 @@ function makeCtx(dir) {
     effect: (fn) => {
       fn();
       return () => {};
+    },
+    // cordis service injection: settings always "available" in the host test,
+    // so invoke the callback immediately with this ctx as the scope.
+    inject: (_deps, callback) => {
+      callback(ctx);
+      return () => {};
+    },
+    settings: {
+      // Minimal stand-in for dsh-settings' Settings.register: resolve the
+      // composition `base` through the schemastery schema (callable) and
+      // expose get/watch so installSettingsSection's wiring runs.
+      register: (ns, schema, options) => {
+        let resolved;
+        try {
+          resolved = Object.freeze(schema(options?.base ?? {}));
+        } catch {
+          resolved = Object.freeze(options?.base ?? {});
+        }
+        return {
+          get: () => resolved,
+          watch: (cb) => {
+            watchers.add(cb);
+            return () => watchers.delete(cb);
+          },
+          update: async () => {},
+          replace: async () => {},
+        };
+      },
     },
   };
   return { ctx, routes };

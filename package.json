@@ -1,6 +1,6 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "DSH web sidebar footer action ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column) and let users configure the top-to-bottom order of the entries.",
   "license": "MIT",
   "keywords": [
@@ -19,6 +19,14 @@
   "dependencies": {
     "@deepseek-ai/cordis-plugin-include": "^1.0.6",
     "js-yaml": "^4.2.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-settings": ">=0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.1-rc.1"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-settings": { "optional": false },
+    "@deepseek-ai/schemastery": { "optional": false }
   },
   "publishConfig": {
     "access": "public"
