@@ -33,6 +33,7 @@ This plugin injects an `!important` stylesheet rule that turns the anchor into a
 
 - Stacks `sidebar.footer.action` content vertically (`display: contents` → flex column), fixing the squeezed row.
 - Configurable **top-to-bottom order**: write the plugin-id list in the plugin row's `config.order` in `cordis.patch.yml`, or reorder with ↑/↓ in the Settings → Plugins → Sidebar Footer Order card.
+- The shell's **Settings row** (`settingsArea` / the `sidebar.settings` slot) joins the same order list under the reserved id `settings` — put it above, between, or below the footer entries; leave it out and it stays exactly where the shell renders it.
 - Configurable `layout` (column / row / contents), `gap` (px between entries), and `align` (cross-axis alignment).
 - Tolerates **entries that render nothing** (e.g. the shell's dormant `cordis-panel`, which returns null unless a dynamic plugin run needs attention): those entries are skipped by the ordering instead of blocking it when "registered ids ≠ DOM nodes".
 - Live config reload — saving from the card (settings service hot-publishes) takes effect instantly without restarting `dsh web`; editing the bundle's `cordis.patch.yml` base config reloads the fiber via patch-layer HMR.
@@ -43,9 +44,11 @@ This plugin injects an `!important` stylesheet rule that turns the anchor into a
 | Side | File | Role |
 | --- | --- | --- |
 | Host | `lib/index.js` | Serves `/footer-order/settings` — a thin proxy over the `footer-order` settings namespace: GET returns the resolved config + revision + override flag; POST saves (update) or resets (replace `{}`) through the official dsh settings seam (`ctx.settings`). The deploy-time patch config becomes the namespace's `base` layer; runtime edits land in the `user` layer above it |
-| Client | `lib/client.js` | Injects the override stylesheet (anchor → vertical flex); watches the DOM and reorders the anchor's children per config; registers the editable Sidebar Footer Order card in Settings → Plugins |
+| Client | `lib/client.js` | Injects the override stylesheet (anchor → vertical flex); watches the DOM and reorders the anchor's blocks (footer entries +, when listed, the settings row) per config; registers the editable Sidebar Footer Order card in Settings → Plugins |
 
 Ordering: every registered entry renders as **exactly one child** of the anchor (the renderer outputs entries sorted by `order`), but some entries may render nothing (e.g. `cordis-panel`, or readouts hidden in the collapsed rail). The client pairs each child with the entry id from `ctx.slots.entriesOfSlot('sidebar.footer.action')` through three layers: ① label text — a child whose text contains an entry's `label` (e.g. the "Restart DSH" button) is that entry; ② previously confirmed pairings; ③ a subsequence heuristic over the remaining children (config-order match first, then minimal rank shift). It then re-sorts the children to the configured sequence — so ordering keeps working even while a dormant null-rendering entry stays registered.
+
+The settings row is found without touching the shell's hashed CSS-module class: the `sidebar.settings` outlet anchor is `display: contents`, so its **parent element is `div.settingsArea`**. Whenever the reserved id `settings` appears in `order`, that block is moved into the footer column (the anchor this plugin already owns) and sorted alongside the entries; when it does not appear, the block is handed back to `div.footArea` as its last child — where the shell renders it — and is otherwise never touched. On unload the plugin restores it too, so nothing is left behind.
 
 ## Configuration
 
@@ -67,10 +70,13 @@ The base-layer `config` (what the bundle ships):
         layout: column   # column = vertical stack (default) | row = horizontal | contents = no override
         gap: 0           # gap between entries in px (>= 0)
         align: stretch   # stretch | start | center | end (cross-axis alignment when column)
-        order: []        # plugin-id list, top to bottom; unlisted entries keep default registration order below the listed ones
+        # order: []        # plugin-id list, top to bottom; unlisted entries keep default registration order below the listed ones
+        order: [settings]  # the reserved id `settings` = the shell's Settings row (settingsArea)
 ```
 
 > The ids in `order` are the `id` each plugin passes to `slots.register({ name, id, ... })` for `sidebar.footer.action` — not package names. The settings card lists all currently registered ids and lets you reorder them with ↑/↓.
+
+> `settings` is a **reserved id**: it stands for the shell's Settings row (the `sidebar.settings` slot rendered inside `div.settingsArea`). List it anywhere in `order` — e.g. `['settings', 'deepseek-balance']` puts Settings above the balance readout — and the row is moved into the footer column at that position. Leave it out and the row stays exactly where the shell renders it: the bottom of the foot area, below the whole footer stack. (If a real footer entry happens to be registered under the id `settings`, it wins — the reserved id is only used when no entry owns it.)
 
 The card exposes `layout` (dropdown: vertical / horizontal / leave untouched), `gap`, `align`, and `order`, with **Save / Reset to defaults**. Save uses optimistic-concurrency revision — if the config was changed elsewhere, you get a prompt and the latest value is loaded.
 
@@ -99,7 +105,7 @@ The bundle mount disappears with the plugin. If you had previously written the r
 ## Usage
 
 1. Open dsh web — the footer entries below the sidebar stack vertically.
-2. Settings → Plugins → **Sidebar Footer Order** card: adjust layout, gap, alignment, and order, then Save. All changes apply live without restarting `dsh web`.
+2. Settings → Plugins → **Sidebar Footer Order** card: adjust layout, gap, alignment, and order, then Save. The "Settings row (settingsArea)" entry in the order list can be moved anywhere with ↑/↓. All changes apply live without restarting `dsh web`.
 
 ## Development
 

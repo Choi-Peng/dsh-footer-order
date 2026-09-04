@@ -8,7 +8,10 @@
 //   - React restoring registration order is re-corrected,
 //   - NULL-rendering entries (like the shell's dormant cordis-panel) no
 //     longer block ordering: label-text matching + config-order heuristic,
-//   - layout variants (row / contents).
+//   - layout variants (row / contents),
+//   - the shell's settings row (settingsArea / sidebar.settings) joining the
+//     order under the reserved id `settings`, and going back to the foot area
+//     when it is left out of the order.
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,24 +33,41 @@ function makeEl(text = '') {
     children: [],
     style: {},
     parentNode: null,
+    parentElement: null,
     textContent: text,
     appendChild(child) {
+      if (child.parentNode && child.parentNode !== this) child.parentNode.removeChild(child);
       const i = this.children.indexOf(child);
       if (i !== -1) this.children.splice(i, 1);
       this.children.push(child);
       child.parentNode = this;
+      child.parentElement = this;
       return child;
     },
     removeChild(child) {
       const i = this.children.indexOf(child);
       if (i !== -1) this.children.splice(i, 1);
       child.parentNode = null;
+      child.parentElement = null;
       return child;
     },
   };
 }
 
+// Real-case sidebar foot:
+//   div.footArea > [div.footerActions > div[data-slot=sidebar.footer.action],
+//                   div.settingsArea > div[data-slot=sidebar.settings]]
 const anchor = makeEl();
+const footerActions = makeEl();
+const footArea = makeEl();
+const settingsArea = makeEl();
+const settingsAnchor = makeEl();
+anchor.slotKey = 'sidebar.footer.action';
+settingsAnchor.slotKey = 'sidebar.settings';
+footerActions.appendChild(anchor);
+footArea.appendChild(footerActions);
+footArea.appendChild(settingsArea);
+settingsArea.appendChild(settingsAnchor);
 const head = makeEl();
 const docEl = makeEl();
 const entries = [
@@ -77,7 +97,21 @@ const documentStub = {
     el.tag = tag;
     return el;
   },
-  querySelector: (sel) => (sel === 'div[data-slot="sidebar.footer.action"]' ? anchor : null),
+  // Resolve `div[data-slot="…"]` by walking the live tree, so a remounted
+  // settings row (a brand-new node) is found the way the browser would.
+  querySelector: (sel) => {
+    const m = /^div\[data-slot="(.+)"\]$/.exec(sel);
+    if (!m) return null;
+    const walk = (node) => {
+      if (node.slotKey === m[1]) return node;
+      for (const child of node.children) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return null;
+    };
+    return walk(footArea);
+  },
 };
 
 const windowStub = {
@@ -234,6 +268,72 @@ async function main() {
   await firePoll();
   assert(styleText().includes('display:contents !important'), 'contents layout CSS');
   assert(!styleText().includes('flex-direction'), 'no flex-direction when contents');
+
+  // 8) The shell's settings row (settingsArea) joins the same order list under
+  //    the reserved id `settings`.
+  console.log('8) settingsArea ordering');
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['settings', 'c', 'a'], hasOverrides: true, revision: 5 };
+  entries.length = 0;
+  entries.push({ options: { id: 'a', order: 0 } }, { options: { id: 'c', order: 1 } });
+  anchor.children.length = 0;
+  const a2 = makeEl();
+  a2.datasetId = 'a';
+  const c2 = makeEl();
+  c2.datasetId = 'c';
+  settingsArea.datasetId = 'settings';
+  anchor.appendChild(a2);
+  anchor.appendChild(c2);
+  await firePoll();
+  assert(settingsArea.parentElement === anchor, 'settings row moved into the footer column when listed');
+  assert(JSON.stringify(ids()) === '["settings","c","a"]', 'settings row on top');
+
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['c', 'settings', 'a'], hasOverrides: true, revision: 5 };
+  await firePoll();
+  assert(JSON.stringify(ids()) === '["c","settings","a"]', 'settings row interleaved between entries');
+
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['c', 'a', 'settings'], hasOverrides: true, revision: 5 };
+  await firePoll();
+  assert(JSON.stringify(ids()) === '["c","a","settings"]', 'settings row last');
+
+  // 9) Left out of the order → handed back to the foot area (below the stack).
+  console.log('9) settingsArea left out of the order');
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['a', 'c'], hasOverrides: true, revision: 5 };
+  await firePoll();
+  assert(settingsArea.parentElement === footArea, 'settings row restored to the foot area');
+  assert(footArea.children[footArea.children.length - 1] === settingsArea, 'restored as the last block of the foot area');
+  assert(JSON.stringify(ids()) === '["a","c"]', 'footer entries alone again');
+
+  // 10) React re-rendering the settings row (a brand-new node) is picked up.
+  console.log('10) settings row remount');
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['settings', 'a', 'c'], hasOverrides: true, revision: 5 };
+  await firePoll();
+  const freshSettingsArea = makeEl();
+  freshSettingsArea.datasetId = 'settings';
+  const freshSettingsAnchor = makeEl();
+  freshSettingsAnchor.slotKey = 'sidebar.settings';
+  freshSettingsArea.appendChild(freshSettingsAnchor);
+  // React swaps the settings row for a brand-new node rendered back in the
+  // foot area (the plugin had moved the old one into the column).
+  settingsArea.parentElement.removeChild(settingsArea);
+  footArea.appendChild(freshSettingsArea);
+  await triggerObserver();
+  assert(freshSettingsArea.parentElement === anchor, 'remounted settings row re-moved into the column');
+  assert(JSON.stringify(ids()) === '["settings","a","c"]', 'order survives the remount');
+
+  // 11) A real footer entry registered under the id `settings` wins: the
+  //     reserved id stands down and the settings row is left alone.
+  console.log('11) reserved id collision');
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['a', 'c'], hasOverrides: true, revision: 5 };
+  await firePoll();
+  assert(freshSettingsArea.parentElement === footArea, 'settings row back in the foot area');
+  entries.push({ options: { id: 'settings', order: 9 } });
+  const ownEl = makeEl();
+  ownEl.datasetId = 'settings';
+  anchor.appendChild(ownEl);
+  currentConfig = { layout: 'column', gap: 0, align: 'stretch', order: ['settings', 'a', 'c'], hasOverrides: true, revision: 6 };
+  await firePoll();
+  assert(freshSettingsArea.parentElement === footArea, 'settings row untouched while an entry owns the id');
+  assert(JSON.stringify(ids()) === '["settings","a","c"]', 'the entry named settings is ordered by its id');
 
   console.log(failures === 0 ? '\nALL CLIENT TESTS PASSED' : `\n${failures} CLIENT TEST(S) FAILED`);
   process.exitCode = failures === 0 ? 0 : 1;

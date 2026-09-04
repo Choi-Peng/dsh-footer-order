@@ -33,6 +33,7 @@
 
 - 把 `sidebar.footer.action` 的内容改为上下排列(`display: contents` → `flex column`)，修复多个 footer 插件挤在一行的问题。
 - 可配置条目**上下顺序**: 在插件行的 `config.order`(base 层)里按从上到下写出插件 id 列表，或直接在 设置 → 插件 → Sidebar Footer Order 卡片里用 ↑/↓ 调整。
+- 外壳的**设置行**(`settingsArea`，即 `sidebar.settings` 槽位)也参与同一份顺序表:用保留 id `settings` 就能把它放到条目之上、之间或之下；不写它则保持外壳原本的位置(整组 footer 条目下方)。
 - 可配置 `layout`(column / row / contents)、`gap`(条目间距)、`align`(对齐方式)。
 - 兼容**不渲染任何内容的条目**(如 shell 内置的 `cordis-panel`，平时返回 null):排序自动跳过这类条目，不会因「条目数 ≠ DOM 节点数」而失效。
 - 配置热加载 —— 在卡片保存(settings 服务热发布)立即生效，无需重启 `dsh web`；编辑 bundle 的 `cordis.patch.yml` base 配置则经 patch 层 HMR 重启此 fiber 生效。
@@ -43,9 +44,11 @@
 | 端 | 文件 | 作用 |
 | --- | --- | --- |
 | Host | `lib/index.js` | 提供 `/footer-order/settings` —— 作为 `footer-order` 设置命名空间的一个薄代理：GET 返回已解析配置 + revision + 是否覆盖标记；POST 通过官方 dsh 设置缝(`ctx.settings`)保存(update)或重置(replace `{}`)。部署期的 patch config 成为该命名空间的 `base` 层；运行时编辑落入其上方的 `user` 层 |
-| Client | `lib/client.js` | 注入覆盖样式(锚点改为纵向 flex)：监听 DOM 变化，按配置把锚点的子元素重新排序：在 设置 → 插件 注册可编辑的 Sidebar Footer Order 卡片 |
+| Client | `lib/client.js` | 注入覆盖样式(锚点改为纵向 flex)：监听 DOM 变化，按配置把锚点下的区块(footer 条目 + 若已列入则含设置行)重新排序：在 设置 → 插件 注册可编辑的 Sidebar Footer Order 卡片 |
 
 排序实现:每个注册条目在锚点下渲染为**恰好一个子节点**(渲染器按 `order` 升序输出)，但部分条目可能渲染为空(如 `cordis-panel`、收起侧边栏时隐藏的读数)。客户端用三层策略把子节点与 `ctx.slots.entriesOfSlot('sidebar.footer.action')` 里的条目 id 配对：① 按条目 `label` 的文本匹配子节点(如「重启 DSH」按钮)；② 沿用此前已确认的配对；③ 对剩余子节点做「配置命中优先、位移最小」的子序列枚举。之后按配置顺序重排 DOM。这样即使存在常驻的空渲染条目，排序也始终生效。
+
+设置行不需要碰外壳那些带哈希后缀的 CSS Module 类名就能定位：`sidebar.settings` 的槽位锚点是 `display: contents`，因此它的**父元素就是 `div.settingsArea`**。当 `order` 里出现保留 id `settings` 时，该区块被移入 footer 列(本插件已拥有的那个锚点)并与条目一起排序；未出现时则把它交还给 `div.footArea` 的最后一个子节点位置 —— 也就是外壳原本渲染它的地方，其余时候完全不碰。插件卸载时同样会还原它，不留痕迹。
 
 ## 安装
 
@@ -89,10 +92,13 @@ base 层 `config`（bundle 默认附带）：
         layout: column   # column = 纵向堆叠（默认）| row = 横向 | contents = 不干预
         gap: 0           # 条目间距，px（>= 0）
         align: stretch   # stretch | start | center | end（纵向堆叠时的交叉轴对齐）
-        order: []        # 插件 id 列表，从上到下；未列出的条目保持默认注册顺序，排在已列条目之下
+        # order: []        # 插件 id 列表，从上到下；未列出的条目保持默认注册顺序，排在已列条目之下
+        order: [settings]  # 保留 id `settings` = 外壳的设置行(settingsArea)
 ```
 
 > `order` 里的 id 是每个插件向 `sidebar.footer.action` 调用 `slots.register({ name, id, ... })` 时传入的 `id`，不是包名。设置卡片会列出当前所有已注册 id，可用 ↑/↓ 重新排序。
+
+> `settings` 是一个**保留 id**，代表外壳的设置行(`sidebar.settings` 槽位，渲染在 `div.settingsArea` 内)。把它写进 `order` 的任意位置即可 —— 例如 `['settings', 'deepseek-balance']` 让「设置」排在余额之上；不写它，设置行就保持外壳原本的位置：foot 区域底部、整组 footer 条目之下。（若真有 footer 条目注册了 `settings` 这个 id，则以该条目为准 —— 保留 id 只在没有条目占用它时生效。）
 
 卡片暴露 `layout`（下拉框：上下排列 / 左右排列 / 不干预）、`gap` 条目间距、`align` 对齐方式、`order` 上下顺序，并提供
 保存 / 恢复默认值；保存采用 revision 乐观并发，若配置已在别处修改会提示并加载最新值。
@@ -100,7 +106,7 @@ base 层 `config`（bundle 默认附带）：
 ## 使用
 
 1. 打开 dsh web —— 侧边栏底部的 footer 条目会上下排列。
-2. 设置 → 插件 → **侧边栏底部排序** 卡片：调整 layout、gap、对齐方式与顺序，然后保存。所有修改实时生效，无需重启 `dsh web`。
+2. 设置 → 插件 → **侧边栏底部排序** 卡片：调整 layout、gap、对齐方式与顺序，然后保存。顺序表里的「设置行(settingsArea)」可以用 ↑/↓ 移到任意位置。所有修改实时生效，无需重启 `dsh web`。
 
 ## 开发
 

@@ -9,7 +9,15 @@
         gap: 0
         # cross-axis alignment inside the stack: stretch | start | center | end
         align: stretch
-        # ordered list of sidebar.footer.action entry ids, top to bottom.
-        # Entries not listed keep their default registration order and are placed
-        # below the listed ones.
+        # ordered list of blocks in the sidebar foot, top to bottom. Each entry
+        # is a `sidebar.footer.action` entry id (the `id` passed to
+        # slots.register, not the package name); entries not listed keep their
+        # default registration order and are placed below the listed ones.
+        #
+        # `settings` is a reserved id: it stands for the shell's Settings row
+        # (the sidebar.settings slot rendered inside div.settingsArea). List it
+        # to move that row above / between / below the footer entries; leave it
+        # out and the row stays where the shell renders it (bottom of the foot).
+        # A real footer entry registered under the id `settings` takes
+        # precedence over the reserved id.
         order: []

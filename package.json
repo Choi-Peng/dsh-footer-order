@@ -1,7 +1,7 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.2.0",
-  "description": "DSH web sidebar footer action ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column) and let users configure the top-to-bottom order of the entries.",
+  "version": "0.3.0",
+  "description": "DSH web sidebar foot ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column) and configure the top-to-bottom order of its entries — including the shell's settings row (settingsArea) under the reserved id `settings`.",
   "license": "MIT",
   "keywords": [
     "dsh",
@@ -9,6 +9,7 @@
     "plugin",
     "sidebar",
     "footer",
+    "settings",
     "order",
     "layout"
   ],
