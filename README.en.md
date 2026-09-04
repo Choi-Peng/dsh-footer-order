@@ -52,7 +52,7 @@ The settings row is found without touching the shell's hashed CSS-module class: 
 
 ## Configuration
 
-The plugin follows dsh's official two-seam config model, and **all changes apply live without restarting `dsh web`** (requires the host to have `@deepseek-ai/dsh-settings` ≥ 0.1.0-rc.7, which is bundled in standard dsh web builds):
+The plugin follows dsh's official two-seam config model, and **all changes apply live without restarting `dsh web`** (compatible with dsh ≥ 0.1.1-rc.2, supporting both 0.1.1 and 0.1.2+):
 
 | Layer | Source | How it takes effect |
 | --- | --- | --- |
