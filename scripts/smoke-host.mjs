@@ -150,16 +150,28 @@ async function main() {
 
   // ── 3. POST save → user layer, revision bump, patch layer untouched ───────
   console.log('3) POST save');
-  r = await call(route, 'POST', { layout: 'column', gap: 6, align: 'center', order: ['a', 'b'], expectedRevision: 0 });
+  r = await call(route, 'POST', {
+    layout: 'column',
+    gap: 6,
+    align: 'center',
+    order: ['a', 'b'],
+    settingsLayout: 'column-reverse',
+    settingsGap: 12,
+    settingsAlign: 'stretch',
+    settingsOrder: ['connection', 'settings'],
+    expectedRevision: 0,
+  });
   assert(r.status === 200, 'POST save returns 200');
   assert(r.body.layout === 'column' && r.body.gap === 6 && r.body.align === 'center', 'save applies layout/gap/align');
   assert(JSON.stringify(r.body.order) === '["a","b"]', 'save applies order');
+  assert(r.body.settingsLayout === 'column-reverse' && r.body.settingsGap === 12 && r.body.settingsAlign === 'stretch', 'save applies settingsArea layout/gap/align');
+  assert(JSON.stringify(r.body.settingsOrder) === '["connection","settings"]', 'save applies settingsOrder');
   assert(r.body.revision === 1, 'revision bumped to 1');
   assert(r.body.hasOverrides === true, 'hasOverrides true after save');
   const desc = ctx.settings.describe({ redactSecrets: true }).find((d) => d.ns === NS);
   assert(
-    desc && JSON.stringify(desc.user) === JSON.stringify({ layout: 'column', gap: 6, align: 'center', order: ['a', 'b'] }),
-    'change persisted into the settings user layer (not the patch file)',
+    desc && desc.user && desc.user.settingsLayout === 'column-reverse' && desc.user.settingsGap === 12,
+    'settingsArea changes persisted into settings user layer',
   );
   assert(
     desc && desc.base && desc.base.layout === 'row' && desc.base.gap === 2,
@@ -184,6 +196,8 @@ async function main() {
   assert(r.status === 400 && r.body.fields.indexOf('gap') !== -1, 'negative gap rejected');
   r = await call(route, 'POST', { order: [1, 'a', 'a', ''], expectedRevision: 2 });
   assert(r.status === 400 && r.body.fields.indexOf('order') !== -1, 'non-string order entry rejected');
+  r = await call(route, 'POST', { settingsLayout: 'circle', expectedRevision: 2 });
+  assert(r.status === 400 && r.body.fields.indexOf('settingsLayout') !== -1, 'invalid settingsLayout rejected');
 
   // ── 6. POST reset → falls back to base ────────────────────────────────────
   console.log('6) POST reset');

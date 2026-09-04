@@ -335,6 +335,44 @@ async function main() {
   assert(freshSettingsArea.parentElement === footArea, 'settings row untouched while an entry owns the id');
   assert(JSON.stringify(ids()) === '["settings","a","c"]', 'the entry named settings is ordered by its id');
 
+  // 12) settingsArea internal arrangement (layout, gap, align, order).
+  console.log('12) settingsArea internal arrangement');
+  currentConfig = {
+    layout: 'column',
+    gap: 4,
+    align: 'stretch',
+    order: ['settings'],
+    settingsLayout: 'column',
+    settingsGap: 10,
+    settingsAlign: 'stretch',
+    settingsOrder: ['connection', 'settings'],
+    hasOverrides: true,
+    revision: 7,
+  };
+  await firePoll();
+  const css = styleText();
+  assert(css.includes('flex-direction:column !important'), 'settingsArea column layout CSS');
+  assert(css.includes('gap:10px !important'), 'settingsArea gap 10px CSS');
+  assert(css.includes('order:1 !important') && css.includes('order:2 !important'), 'settingsArea CSS order applied');
+
+  // Test row-reverse
+  currentConfig = {
+    layout: 'column',
+    gap: 4,
+    align: 'stretch',
+    order: ['settings'],
+    settingsLayout: 'row-reverse',
+    settingsGap: 6,
+    settingsAlign: 'center',
+    settingsOrder: [],
+    hasOverrides: true,
+    revision: 8,
+  };
+  await firePoll();
+  const cssRev = styleText();
+  assert(cssRev.includes('flex-direction:row-reverse !important'), 'settingsArea row-reverse CSS');
+  assert(cssRev.includes('gap:6px !important'), 'settingsArea gap 6px CSS');
+
   console.log(failures === 0 ? '\nALL CLIENT TESTS PASSED' : `\n${failures} CLIENT TEST(S) FAILED`);
   process.exitCode = failures === 0 ? 0 : 1;
 }
