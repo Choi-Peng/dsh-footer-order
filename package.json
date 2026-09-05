@@ -1,6 +1,6 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "DSH web sidebar foot ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column), configure entry order (including the settings row under id `settings`), and manage layout, gap, align, and item order within settingsArea.",
   "license": "MIT",
   "keywords": [
@@ -60,5 +60,10 @@
     "README.md",
     "README.en.md",
     "LICENSE"
-  ]
+  ],
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-settings": "0.1.0-rc.8",
+    "@deepseek-ai/schemastery": "^3.18.2"
+  }
 }
