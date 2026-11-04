@@ -1,6 +1,6 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.7.0",
+  "version": "0.5.2",
   "description": "DSH web sidebar foot ordering: stack sidebar.footer.action entries vertically, configure their order (including the shell's settings row under id `settings`), and arrange the whole settingsArea block — layout, gap, align, and block order, covering rows other plugins inject into the area (e.g. @zhengjunyao/dsh-restart).",
   "license": "MIT",
   "keywords": [
