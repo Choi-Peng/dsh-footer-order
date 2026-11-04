@@ -3,7 +3,7 @@
     {
       "name": "dsh-footer-order",
       "url": "https://github.com/Choi-Peng/dsh-footer-order",
-      "description": "Sidebar footer action layout & ordering: stack sidebar.footer.action entries vertically (display: contents → flex column) and configure their top-to-bottom order.",
+      "description": "Sidebar footer action layout & ordering: stack sidebar.footer.action entries vertically (display: contents → flex column), configure their top-to-bottom order, and arrange the whole settings area — including rows other plugins inject there (e.g. @zhengjunyao/dsh-restart) — configured on the plugin's own pages in Settings → Plugins.",
       "bundle": false
     }
   ]

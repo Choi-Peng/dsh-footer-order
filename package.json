@@ -1,7 +1,7 @@
 {
   "name": "@choi-p/dsh-footer-order",
-  "version": "0.4.1",
-  "description": "DSH web sidebar foot ordering: force the sidebar.footer.action slot into a vertical stack (display: contents → flex column), configure entry order (including the settings row under id `settings`), and manage layout, gap, align, and item order within settingsArea.",
+  "version": "0.7.0",
+  "description": "DSH web sidebar foot ordering: stack sidebar.footer.action entries vertically, configure their order (including the shell's settings row under id `settings`), and arrange the whole settingsArea block — layout, gap, align, and block order, covering rows other plugins inject into the area (e.g. @zhengjunyao/dsh-restart).",
   "license": "MIT",
   "keywords": [
     "dsh",
@@ -18,9 +18,8 @@
     "url": "https://github.com/Choi-Peng/dsh-footer-order.git"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": ">=4.0.1 <5",
-    "@deepseek-ai/dsh-settings": ">=0.1.0-rc.7 <0.2.0",
-    "@deepseek-ai/schemastery": ">=3.18.1-rc.1 <4"
+    "@deepseek-ai/cordis": ">=4.0.5",
+    "@deepseek-ai/schemastery": ">=3.18.5"
   },
   "publishConfig": {
     "access": "public"
@@ -34,11 +33,12 @@
     "./client": {
       "default": "./lib/client.js"
     },
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "dsh": {
     "engines": {
-      "dsh": ">=0.1.1-rc.2"
+      "dsh": ">=0.2.1-rc.1"
     },
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -46,24 +46,24 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-renderer",
         "@deepseek-ai/dsh-client-ui-sidebar",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
       ]
     }
   },
   "files": [
     "lib",
+    "locale",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
     "LICENSE"
   ],
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-settings": "0.1.0-rc.8",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/schemastery": "^3.18.5"
   }
 }

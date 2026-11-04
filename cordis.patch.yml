@@ -1,4 +1,9 @@
 # dsh-footer-order — default config (bundle patch layer)
+#
+# These values are the base layer of this entry's settings: the seam resolves
+# schema defaults → this row's `config` → the user layer that Settings → Plugins
+# writes into the profile patch. Every field is volatile, so a save applies live
+# without remounting the entry.
 - insert:
     - id: footer-order
       name: '@choi-p/dsh-footer-order'
@@ -21,3 +26,19 @@
         # A real footer entry registered under the id `settings` takes
         # precedence over the reserved id.
         order: []
+        # Arrangement of the WHOLE settingsArea block - the shell's settings row
+        # plus every block another plugin appends to the area (e.g.
+        # @zhengjunyao/dsh-restart's .dsh-sidebar-row): contents = leave
+        # untouched (default) | row | column | row-reverse | column-reverse.
+        settingsLayout: contents
+        # px gap between the area's blocks (>= 0)
+        settingsGap: 8
+        # cross-axis alignment inside the area: center | stretch | start | end
+        settingsAlign: center
+        # ordered list of block keys inside settingsArea: `settings` for the
+        # shell's settings row, then whatever identifies an injected block -
+        # its `id`, or `plugin:<data-plugin>` (dsh-restart's row is
+        # `plugin:dsh-sidebar-row`). Blocks left out keep their DOM order and
+        # follow the listed ones. Applied as inline CSS `order`; no node is
+        # ever moved.
+        settingsOrder: []

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Sidebar Footer Order",
+    "description": "Stacks sidebar footer actions vertically, orders them top to bottom, and arranges the whole settings area — including rows other plugins inject there."
+  }
+}
